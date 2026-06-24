@@ -62,9 +62,17 @@ class TaskDialog(QDialog):
             QDialogButtonBox.Ok | QDialogButtonBox.Cancel,
             Qt.Horizontal, self
         )
-        buttons.accepted.connect(self.accept)
+        buttons.accepted.connect(self.on_accept)
         buttons.rejected.connect(self.reject)
         layout.addWidget(buttons)
+
+    def on_accept(self):
+        """Проверка перед подтверждением: срок не может быть в прошлом"""
+        selected_date = self.due_date_edit.date()
+        if selected_date < QDate.currentDate():
+            QMessageBox.warning(self, "Ошибка", "Срок выполнения не может быть прошедшим")
+            return
+        self.accept()
     
     def load_task_data(self):
         """Загрузка данных задачи для редактирования"""
@@ -248,6 +256,14 @@ class TodoApp(QMainWindow):
         self.search_edit.setMaximumWidth(200)
         self.search_edit.textChanged.connect(self.on_search_changed)
         toolbar.addWidget(self.search_edit)
+
+        # Сортировка
+        toolbar.addWidget(QLabel("Сортировать:"))
+        self.sort_combo = QComboBox()
+        self.sort_combo.addItems(["По умолчанию", "По сроку", "По приоритету", "По статусу"])
+        self.sort_combo.setMaximumWidth(180)
+        self.sort_combo.currentTextChanged.connect(self.on_sort_changed)
+        toolbar.addWidget(self.sort_combo)
         
         parent_layout.addLayout(toolbar)
     
@@ -342,10 +358,20 @@ class TodoApp(QMainWindow):
     
     def load_tasks(self):
         """Загрузка задач в таблицу"""
+        sort_key = None
+        if hasattr(self, 'sort_combo'):
+            text = self.sort_combo.currentText()
+            if text == "По сроку":
+                sort_key = 'due'
+            elif text == "По приоритету":
+                sort_key = 'priority'
+            elif text == "По статусу":
+                sort_key = 'status'
+
         if hasattr(self, 'search_edit') and self.search_edit.text():
-            tasks = self.db.search_tasks(self.search_edit.text())
+            tasks = self.db.search_tasks(self.search_edit.text(), sort_by=sort_key)
         else:
-            tasks = self.db.get_all_tasks(self.current_filter)
+            tasks = self.db.get_all_tasks(self.current_filter, sort_by=sort_key)
         
         self.table.setRowCount(len(tasks))
         
@@ -473,6 +499,10 @@ class TodoApp(QMainWindow):
             "Выполнена": "Выполнена"
         }
         self.current_filter = filter_map.get(filter_text, "Все")
+        self.load_tasks()
+
+    def on_sort_changed(self, sort_text):
+        """Обработка изменения сортировки"""
         self.load_tasks()
     
     def on_search_changed(self, search_text):
